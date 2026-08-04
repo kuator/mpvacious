@@ -58,6 +58,11 @@ assert(primary_subs.get_n_text(first, 2) == "First line\nFirst line\nSecond line
 local formatted_subs = sub_list.new(true)
 formatted_subs.insert(Subtitle:new { text = "First line\n\nSecond line", start = 0, ['end'] = 2 })
 assert(formatted_subs.get_text() == "First line\n\nSecond line")
+local repeated_subs = sub_list.new(true)
+repeated_subs.insert(Subtitle:new { text = "Yes", start = 0, ['end'] = 1 })
+repeated_subs.insert(Subtitle:new { text = "No", start = 1, ['end'] = 2 })
+repeated_subs.insert(Subtitle:new { text = "Yes\nAgain", start = 2, ['end'] = 3 })
+assert(repeated_subs.get_text() == "Yes\nNo\nYes\nAgain")
 print("subtitle list tests passed.")
 
 ------------------------------------------------------------

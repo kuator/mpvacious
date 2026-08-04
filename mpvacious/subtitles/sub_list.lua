@@ -11,19 +11,32 @@ local CONCAT_CHR = '\n' -- character used to concatenate subtitle lines
 local new_sub_list = function(deduplicate_lines)
     local subs_list = {}
 
-    local append_text = function(speech, seen, text)
+    local append_text = function(speech, text)
         if not deduplicate_lines then
             table.insert(speech, text)
             return
         end
         local normalized_text = text:gsub('\r\n', '\n'):gsub('\r', '\n')
+        local lines = {}
         for line in (normalized_text .. '\n'):gmatch('(.-)\n') do
-            if line == '' or not seen[line] then
-                table.insert(speech, line)
-                if line ~= '' then
-                    seen[line] = true
+            table.insert(lines, line)
+        end
+        local overlap = math.min(#speech, #lines)
+        while overlap > 0 do
+            local matches = true
+            for i = 1, overlap do
+                if speech[#speech - overlap + i] ~= lines[i] then
+                    matches = false
+                    break
                 end
             end
+            if matches then
+                break
+            end
+            overlap = overlap - 1
+        end
+        for i = overlap + 1, #lines do
+            table.insert(speech, lines[i])
         end
     end
 
@@ -33,15 +46,13 @@ local new_sub_list = function(deduplicate_lines)
     end
     local get_text = function()
         local speech = {}
-        local seen = {}
         for _, sub in ipairs(subs_list) do
-            append_text(speech, seen, sub['text'])
+            append_text(speech, sub['text'])
         end
         return table.concat(speech, CONCAT_CHR)
     end
     local get_n_text = function(sub, n_lines)
         local speech = {}
-        local seen = {}
         local end_sub = sub
         local n_subs = 0
         for _, v in ipairs(subs_list) do
@@ -49,7 +60,7 @@ local new_sub_list = function(deduplicate_lines)
                 break
             end
             if v >= sub and n_subs < n_lines then
-                append_text(speech, seen, v['text'])
+                append_text(speech, v['text'])
                 end_sub = v
                 n_subs = n_subs + 1
             end
