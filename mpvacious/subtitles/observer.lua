@@ -17,9 +17,9 @@ local custom_subtitle_filter = h.maybe_require('custom_subtitle_filter')
 local self = {}
 
 local dialogs = sub_list.new()
-local secondary_dialogs = sub_list.new()
+local secondary_dialogs = sub_list.new(true)
 local all_dialogs = sub_list.new()
-local all_secondary_dialogs = sub_list.new()
+local all_secondary_dialogs = sub_list.new(true)
 local user_timings = timings.new()
 local autoclip_method = new_autoclip_method_selector.new()
 
@@ -299,13 +299,13 @@ end
 self.clear = function()
     append_dialogue = false
     dialogs = sub_list.new()
-    secondary_dialogs = sub_list.new()
+    secondary_dialogs = sub_list.new(true)
     user_timings = timings.new()
 end
 
 self.clear_all_dialogs = function()
     all_dialogs = sub_list.new()
-    all_secondary_dialogs = sub_list.new()
+    all_secondary_dialogs = sub_list.new(true)
 end
 
 self.clear_and_notify = function()

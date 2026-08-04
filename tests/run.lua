@@ -40,4 +40,26 @@ print("note_exporter tests passed.")
 
 ------------------------------------------------------------
 
+print("Running subtitle list tests...")
+local sub_list = require('subtitles.sub_list')
+local Subtitle = require('subtitles.subtitle')
+local first = Subtitle:new { text = "First line", start = 0, ['end'] = 2 }
+local expanded = Subtitle:new { text = "First line\nSecond line", start = 1, ['end'] = 3 }
+local secondary_subs = sub_list.new(true)
+secondary_subs.insert(first)
+secondary_subs.insert(expanded)
+assert(secondary_subs.get_text() == "First line\nSecond line")
+assert(secondary_subs.get_n_text(first, 2) == "First line\nSecond line")
+local primary_subs = sub_list.new()
+primary_subs.insert(first)
+primary_subs.insert(expanded)
+assert(primary_subs.get_text() == "First line\nFirst line\nSecond line")
+assert(primary_subs.get_n_text(first, 2) == "First line\nFirst line\nSecond line")
+local formatted_subs = sub_list.new(true)
+formatted_subs.insert(Subtitle:new { text = "First line\n\nSecond line", start = 0, ['end'] = 2 })
+assert(formatted_subs.get_text() == "First line\n\nSecond line")
+print("subtitle list tests passed.")
+
+------------------------------------------------------------
+
 print("ALL TESTS PASSED")

@@ -8,8 +8,24 @@ Subtitle list remembers selected subtitle lines.
 local h = require('helpers')
 local CONCAT_CHR = '\n' -- character used to concatenate subtitle lines
 
-local new_sub_list = function()
+local new_sub_list = function(deduplicate_lines)
     local subs_list = {}
+
+    local append_text = function(speech, seen, text)
+        if not deduplicate_lines then
+            table.insert(speech, text)
+            return
+        end
+        local normalized_text = text:gsub('\r\n', '\n'):gsub('\r', '\n')
+        for line in (normalized_text .. '\n'):gmatch('(.-)\n') do
+            if line == '' or not seen[line] then
+                table.insert(speech, line)
+                if line ~= '' then
+                    seen[line] = true
+                end
+            end
+        end
+    end
 
     local get_time = function(position)
         local i = position == 'start' and 1 or #subs_list
@@ -17,21 +33,25 @@ local new_sub_list = function()
     end
     local get_text = function()
         local speech = {}
+        local seen = {}
         for _, sub in ipairs(subs_list) do
-            table.insert(speech, sub['text'])
+            append_text(speech, seen, sub['text'])
         end
         return table.concat(speech, CONCAT_CHR)
     end
     local get_n_text = function(sub, n_lines)
         local speech = {}
+        local seen = {}
         local end_sub = sub
+        local n_subs = 0
         for _, v in ipairs(subs_list) do
             if v['start'] - end_sub['end'] >= 20 then
                 break
             end
-            if v >= sub and #speech < n_lines then
-                table.insert(speech, v['text'])
+            if v >= sub and n_subs < n_lines then
+                append_text(speech, seen, v['text'])
                 end_sub = v
+                n_subs = n_subs + 1
             end
         end
         return table.concat(speech, CONCAT_CHR), end_sub
