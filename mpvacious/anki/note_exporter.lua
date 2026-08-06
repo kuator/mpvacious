@@ -18,7 +18,14 @@ local function normalize_field_content(new_text, old_text, cfg)
 
     -- Primary and secondary subtitles are compared without html tags.
     if cfg.plaintext_compare then
-        return h.remove_html_tags(new_text), h.remove_html_tags(old_text)
+        local function normalize_plaintext(text)
+            text = h.remove_html_tags(text):gsub('　', ' ')
+            for _, quote in ipairs { '『', '』', '「', '」', '“', '”' } do
+                text = text:gsub(quote, '"')
+            end
+            return text:gsub('%s+', ' '):match('^%s*(.-)%s*$')
+        end
+        return normalize_plaintext(new_text), normalize_plaintext(old_text)
     else
         return new_text, old_text
     end
@@ -449,6 +456,15 @@ local function make_exporter()
         h.assert_equals(pub.join_fields(new_note, old_note).SentKanji, old_note.SentKanji)
         new_note = {
             SentKanji = "Well, that&#39;s the knighthood in the bag.",
+        }
+        h.assert_equals(pub.join_fields(new_note, old_note).SentKanji, old_note.SentKanji)
+
+        -- Equivalent subtitle punctuation must not duplicate a Yomitan sentence.
+        old_note = {
+            SentKanji = "女の子の <b>女性</b>の　『お』から始まる…",
+        }
+        new_note = {
+            SentKanji = "女の子の <b>女性</b>の “お”から始まる…",
         }
         h.assert_equals(pub.join_fields(new_note, old_note).SentKanji, old_note.SentKanji)
 
