@@ -30,6 +30,15 @@ eutils.run_tests()
 print("encoder utility tests passed.")
 
 ------------------------------------------------------------
+-- Run config utility tests
+------------------------------------------------------------
+
+print("Running config utility tests...")
+local cfg_utils = require('config.utils')
+cfg_utils.run_tests()
+print("config utility tests passed.")
+
+------------------------------------------------------------
 -- Run note_exporter tests
 ------------------------------------------------------------
 
@@ -40,9 +49,15 @@ print("note_exporter tests passed.")
 
 ------------------------------------------------------------
 
+print("Running subtitle tests...")
+local Subtitle = require('subtitles.subtitle')
+Subtitle.run_tests()
+print("subtitle tests passed.")
+
+------------------------------------------------------------
+
 print("Running subtitle list tests...")
 local sub_list = require('subtitles.sub_list')
-local Subtitle = require('subtitles.subtitle')
 local first = Subtitle:new { text = "First line", start = 0, ['end'] = 2 }
 local expanded = Subtitle:new { text = "First line\nSecond line", start = 1, ['end'] = 3 }
 local secondary_subs = sub_list.new(true)
