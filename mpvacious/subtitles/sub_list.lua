@@ -67,14 +67,32 @@ local new_sub_list = function(deduplicate_lines)
         end
         return table.concat(speech, CONCAT_CHR), end_sub
     end
+    local get_overlapping_text = function(start_time, end_time)
+        local speech = {}
+        for _, sub in ipairs(subs_list) do
+            if sub.start < end_time and sub['end'] > start_time then
+                append_text(speech, sub.text)
+            end
+        end
+        local normalized = {}
+        for _, text in ipairs(speech) do
+            text = text:gsub('%s+', ' '):match('^%s*(.-)%s*$')
+            if not h.is_empty(text) then
+                table.insert(normalized, text)
+            end
+        end
+        return table.concat(normalized, ' ')
+    end
     local insert = function(sub)
         if sub == nil or h.is_empty(sub.text) then
             return false
         end
         local lookup_window_size = 25
         local n_latest_subs = {h.unpack(subs_list, math.max(#subs_list - lookup_window_size, 1), #subs_list)}
-        if h.contains(n_latest_subs, sub) then
-            return false
+        for _, known_sub in ipairs(n_latest_subs) do
+            if known_sub:is_same_event(sub) then
+                return false
+            end
         end
         table.insert(subs_list, (#subs_list - #n_latest_subs) + h.find_insertion_point(n_latest_subs, sub), sub)
         return true
@@ -91,6 +109,7 @@ local new_sub_list = function(deduplicate_lines)
         get_time = get_time,
         get_text = get_text,
         get_n_text = get_n_text,
+        get_overlapping_text = get_overlapping_text,
         insert = insert,
         is_empty = function()
             return h.is_empty(subs_list)

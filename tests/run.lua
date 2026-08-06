@@ -78,7 +78,58 @@ repeated_subs.insert(Subtitle:new { text = "Yes", start = 0, ['end'] = 1 })
 repeated_subs.insert(Subtitle:new { text = "No", start = 1, ['end'] = 2 })
 repeated_subs.insert(Subtitle:new { text = "Yes\nAgain", start = 2, ['end'] = 3 })
 assert(repeated_subs.get_text() == "Yes\nNo\nYes\nAgain")
+local aligned_subs = sub_list.new(true)
+aligned_subs.insert(Subtitle:new { text = "First line", start = 0, ['end'] = 1.5 })
+aligned_subs.insert(Subtitle:new { text = "First line\nSecond line", start = 1.5, ['end'] = 3 })
+aligned_subs.insert(Subtitle:new { text = "Outside", start = 4, ['end'] = 5 })
+assert(aligned_subs.get_overlapping_text(1, 3) == "First line Second line")
+assert(aligned_subs.get_overlapping_text(3, 4) == "")
+assert(aligned_subs.insert(Subtitle:new { text = "First line", start = 10, ['end'] = 11 }))
+assert(not aligned_subs.insert(Subtitle:new { text = "First line", start = 10.1, ['end'] = 11.1 }))
 print("subtitle list tests passed.")
+
+------------------------------------------------------------
+
+print("Running subtitle observer tests...")
+local subs_observer = require('subtitles.observer')
+subs_observer.import_subs {
+    Subtitle:new { text = "Japanese", start = 1, ['end'] = 3 },
+    Subtitle:new { text = "First line", start = 0, ['end'] = 1.5, is_secondary = true },
+    Subtitle:new { text = "First line\nSecond line", start = 1.5, ['end'] = 3, is_secondary = true },
+    Subtitle:new { text = "Outside", start = 4, ['end'] = 5, is_secondary = true },
+}
+local mined_sub = subs_observer.collect_from_current()
+assert(mined_sub.text == "Japanese")
+assert(mined_sub.secondary == "First line Second line")
+print("subtitle observer tests passed.")
+
+------------------------------------------------------------
+
+print("Running quick subtitle observer tests...")
+local mp = require('mp')
+local properties = {
+    ['sub-text'] = "Japanese",
+    ['sub-start'] = 1,
+    ['sub-end'] = 3,
+    ['secondary-sub-text'] = "First line",
+    ['secondary-sub-start'] = 0,
+    ['secondary-sub-end'] = 1.5,
+    ['sub-delay'] = 0,
+    ['audio-delay'] = 0,
+}
+mp.get_property = function(name) return properties[name] end
+mp.get_property_number = function(name) return properties[name] end
+mp.get_property_native = function(name) return properties[name] end
+subs_observer.clear_all_dialogs()
+subs_observer.all_subs_until_now()
+properties['secondary-sub-text'] = "First line\nSecond line"
+properties['secondary-sub-start'] = 1.5
+properties['secondary-sub-end'] = 3
+subs_observer.all_subs_until_now()
+local quick_sub = subs_observer.collect_from_all_dialogues(1)
+assert(quick_sub.text == "Japanese")
+assert(quick_sub.secondary == "First line Second line")
+print("quick subtitle observer tests passed.")
 
 ------------------------------------------------------------
 
