@@ -6,15 +6,15 @@ When a primary subtitle spans secondary cues that have not appeared onscreen yet
 
 ## Design
 
-Load the selected secondary subtitle track asynchronously when the media file or secondary track changes. Use `ffmpeg` to convert either an external or embedded text-subtitle stream to SRT, parse its cue timings and text once, and cache the resulting subtitle list.
+Load the selected secondary subtitle track when the media file or secondary track changes. Parse external ASS/SRT files directly; asynchronously use `ffmpeg` only to extract embedded text-subtitle streams. Cache the resulting subtitle list.
 
 Card collection remains synchronous and small: query the cached list for cues overlapping the primary timing. If the cache is unavailable, still loading, or extraction fails, fall back to the secondary cues already observed by mpvacious.
 
-Cache only the active file and secondary track in memory. Replacing either invalidates the old list. Image subtitle tracks and unavailable `ffmpeg` are unsupported and use the existing fallback.
+Cache only the active file and secondary track in memory. Replacing either invalidates the old list. Unsupported external formats, image subtitles, and embedded tracks without `ffmpeg` use the existing fallback.
 
 ## Errors
 
-Extraction failure is logged once and must not prevent note creation. Stale asynchronous results must not replace the cache after the user changes files or tracks.
+Parsing or extraction failure is logged once and must not prevent note creation. Stale asynchronous results must not replace the cache after the user changes files or tracks.
 
 ## Verification
 

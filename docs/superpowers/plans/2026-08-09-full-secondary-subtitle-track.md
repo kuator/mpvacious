@@ -4,21 +4,21 @@
 
 **Goal:** Include every secondary cue overlapping the mined primary cue, including cues playback has not reached, without slowing card creation.
 
-**Architecture:** A new subtitle-track module asynchronously asks `ffmpeg` for the active secondary stream as SRT whenever the media file or secondary selection changes. It parses and caches one `sub_list`; the observer queries that cache synchronously and falls back to its observed list until the cache is ready.
+**Architecture:** A new subtitle-track module directly parses external ASS/SRT files and asynchronously asks `ffmpeg` for embedded subtitle streams whenever the media file or secondary selection changes. It caches one `sub_list`; the observer queries that cache synchronously and falls back to its observed list until the cache is ready.
 
 **Tech Stack:** Lua 5.1/LuaJIT, mpv Lua API, existing `helpers.subprocess` and `subtitles.sub_list`, ffmpeg.
 
 ## Global Constraints
 
 - Card creation must never launch or wait for `ffmpeg`.
-- External and embedded text subtitle tracks must use the same extraction path.
+- External ASS/SRT tracks must not require `ffmpeg`; embedded tracks may use it asynchronously.
 - Extraction failure, missing ffmpeg, and image subtitles must preserve current observed-cue behavior.
 - A callback for an old file or track must not replace the active cache.
 - Do not add a configuration option or dependency.
 
 ---
 
-### Task 1: Parse ffmpeg SRT output
+### Task 1: Parse ASS and SRT text
 
 **Files:**
 - Create: `mpvacious/subtitles/full_track.lua`
@@ -26,11 +26,12 @@
 
 **Interfaces:**
 - Produces: `full_track.parse_srt(text) -> sub_list`
+- Produces: `full_track.parse_ass(text) -> sub_list`
 - Produces: `full_track.run_tests()`
 
 - [ ] **Step 1: Write the failing parser test**
 
-Add a module test containing two SRT cues, including comma milliseconds and inline formatting, and assert that `get_overlapping_text(1, 5)` returns both cleaned lines.
+Add module tests containing timed SRT and ASS cues with inline formatting, and assert that `get_overlapping_text(1, 5)` returns their cleaned lines.
 
 - [ ] **Step 2: Run the test and verify failure**
 
@@ -40,7 +41,7 @@ Expected: FAIL because `subtitles.full_track` does not exist.
 
 - [ ] **Step 3: Implement the minimal parser**
 
-Normalize newlines, split SRT blocks, parse `HH:MM:SS,mmm --> HH:MM:SS,mmm`, remove generated inline tags, and insert `Subtitle:from_text(...)` values into an existing `sub_list`.
+Parse SRT timing blocks and ASS `[Events]` dialogue fields, remove inline formatting, and insert `Subtitle:from_text(...)` values into an existing `sub_list`.
 
 - [ ] **Step 4: Run the tests**
 
@@ -60,7 +61,7 @@ Expected: `ALL TESTS PASSED`.
 
 - [ ] **Step 1: Write failing cache tests**
 
-Inject a fake subprocess function. Assert that refresh selects the subtitle track whose `main-selection` is `1`, builds `ffmpeg -v error -nostdin -i INPUT -map 0:FF_INDEX -f srt -`, exposes parsed overlap after callback completion, returns `nil` before completion, and ignores a callback after a newer refresh.
+Assert that external ASS/SRT files are read directly without a subprocess. Inject a fake subprocess for embedded tracks and verify the `ffmpeg -v error -nostdin -i INPUT -map 0:FF_INDEX -f srt -` contract, delayed availability, and rejection of stale callbacks.
 
 - [ ] **Step 2: Run the tests and verify failure**
 
@@ -70,7 +71,7 @@ Expected: FAIL because the cache interface is absent.
 
 - [ ] **Step 3: Implement the cache**
 
-Keep only the active cache key, parsed list, and request generation. Clear the list before starting asynchronous extraction. In the callback, accept only the active generation and successful status; otherwise leave the list unavailable. At lookup, subtract the current subtitle/audio delay from the requested interval before querying raw track timings.
+Keep only the active cache key, parsed list, and request generation. Directly parse supported external files; asynchronously extract embedded streams. Accept only the active callback generation. At lookup, subtract the current subtitle/audio delay from the requested interval before querying raw track timings.
 
 - [ ] **Step 4: Run the tests**
 
