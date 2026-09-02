@@ -276,7 +276,7 @@ local function make_exporter()
         for _, note_id in pairs(note_ids) do
             self.ankiconnect.append_media(
                     note_id,
-                    make_new_note_data(self.ankiconnect.get_note_fields(note_id), h.deep_copy(new_data), { overwrite = overwrite }),
+                    pub.make_new_note_data(self.ankiconnect.get_note_fields(note_id), h.deep_copy(new_data), { overwrite = overwrite }),
                     substitute_fmt(self.config.note_tag),
                     change_notes_countdown.decrease
             )
@@ -501,6 +501,67 @@ local function test_make_new_note_data(test_exporter)
     h.assert_equals(test_exporter.make_new_note_data(old_note, new_note, { overwrite = false, disable_forvo = true }).SentKanji, expected.SentKanji)
 end
 
+local function test_update_notes_after_media_created()
+    local updated_fields
+
+    local function make_media_job()
+        local job = { filename = nil }
+        job.on_finish = function(callback)
+            job.callback = callback
+            return job
+        end
+        job.run_async = function()
+            job.callback()
+        end
+        return job
+    end
+
+    local test_exporter = make_exporter().init(
+            {
+                get_media_dir_path = function() return "/tmp" end,
+                get_note_fields = function() return { SentKanji = "old sentence" } end,
+                append_media = function(_, fields) updated_fields = fields end,
+            },
+            {
+                get_lines = function() return nil end,
+                clear_options = h.noop,
+            },
+            {
+                collect_from_current = function()
+                    return {
+                        text = "new sentence",
+                        secondary = "",
+                        is_valid = function() return true end,
+                    }
+                end,
+                clipboard_prepare = function(text) return text end,
+                clear = h.noop,
+            },
+            {
+                set_output_dir = h.noop,
+                snapshot = { create_job = make_media_job },
+                audio = { create_job = make_media_job },
+            },
+            {
+                set_output_dir = h.noop,
+                append = function(new_data) return new_data end,
+            },
+            {
+                fail_if_not_ready = h.noop,
+                config = function()
+                    return {
+                        sentence_field = "SentKanji",
+                        audio_padding = 0,
+                        miscinfo_enable = false,
+                    }
+                end,
+            }
+    )
+
+    test_exporter.update_notes({ 1 }, true)
+    h.assert_equals(updated_fields.SentKanji, "new sentence")
+end
+
 local function make_test_exporter()
     local test_cfg_mgr = {
         fail_if_not_ready = h.noop,
@@ -537,6 +598,7 @@ local function run_tests(test_exporter)
     test_html_escaping(test_exporter)
     test_join_fields_duplicates(test_exporter)
     test_make_new_note_data(test_exporter)
+    test_update_notes_after_media_created()
 end
 
 return {
