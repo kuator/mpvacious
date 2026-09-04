@@ -29,6 +29,15 @@ function Subtitle:from_text(text, start_time, end_time)
     return self:new { ['text'] = text, ['start'] = start_time, ['end'] = end_time }
 end
 
+--- Return the selected subtitle track's delay relative to the audio track.
+--- mp_api defaults to mp; tests may provide an mp-compatible stub.
+local function subtitle_delay(is_secondary, mp_api)
+    mp_api = mp_api or mp
+    local delay_property = is_secondary and 'secondary-sub-delay' or 'sub-delay'
+    return mp_api.get_property_native(delay_property) - mp_api.get_property_native('audio-delay')
+end
+
+--- Return the currently displayed primary or secondary subtitle with mpv delays applied.
 function Subtitle:now(secondary)
     local prefix = secondary and "secondary-" or ""
     local this = self:new {
@@ -38,8 +47,7 @@ function Subtitle:now(secondary)
         ['is_secondary'] = (secondary and true or false),
     }
     if this:is_valid() then
-        local delay_property = secondary and 'secondary-sub-delay' or 'sub-delay'
-        return this:delay(mp.get_property_native(delay_property) - mp.get_property_native('audio-delay'))
+        return this:delay(subtitle_delay(secondary))
     else
         return nil
     end
@@ -144,25 +152,25 @@ local function test_expand_end_time()
     h.assert_equals(expanded['end'], 3)
 end
 
-local function test_secondary_subtitle_uses_secondary_delay()
-    local get_property = mp.get_property
-    local get_property_number = mp.get_property_number
-    local get_property_native = mp.get_property_native
-    mp.get_property = function()
-        return 'Secondary line'
+local function make_mp_stub_for_tests()
+    local delays = { ['sub-delay'] = 10, ['secondary-sub-delay'] = 3, ['audio-delay'] = 1 }
+    local function get_property_native(name)
+        return delays[name]
     end
-    mp.get_property_number = function(name)
-        return name == 'secondary-sub-start' and 1 or 2
+    return { get_property_native = get_property_native }
+end
+
+local function test_subtitle_delay()
+    local mp_stub = make_mp_stub_for_tests()
+    local cases = {
+        { is_secondary = false, expected_start = 10, expected_end = 11 },
+        { is_secondary = true, expected_start = 3, expected_end = 4 },
+    }
+    for _, case in ipairs(cases) do
+        local shifted = sub("Line", 1, 2):delay(subtitle_delay(case.is_secondary, mp_stub))
+        h.assert_equals(shifted['start'], case.expected_start)
+        h.assert_equals(shifted['end'], case.expected_end)
     end
-    mp.get_property_native = function(name)
-        return ({ ['sub-delay'] = 10, ['secondary-sub-delay'] = 3, ['audio-delay'] = 1 })[name]
-    end
-    local secondary = Subtitle:now('secondary')
-    mp.get_property = get_property
-    mp.get_property_number = get_property_number
-    mp.get_property_native = get_property_native
-    h.assert_equals(secondary['start'], 3)
-    h.assert_equals(secondary['end'], 4)
 end
 
 function Subtitle.run_tests()
@@ -171,7 +179,7 @@ function Subtitle.run_tests()
     test_time_overlap()
     test_can_expand_with()
     test_expand_end_time()
-    test_secondary_subtitle_uses_secondary_delay()
+    test_subtitle_delay()
 end
 
 return Subtitle
