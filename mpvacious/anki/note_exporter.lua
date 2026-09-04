@@ -245,7 +245,8 @@ local function make_exporter()
         return new_data
     end
 
-    --- expected cfg fields: bool disable_forvo, bool overwrite
+    --- Merge generated note fields with stored fields according to update options.
+    --- cfg.disable_forvo skips pronunciation media; cfg.overwrite replaces rather than appends.
     function pub.make_new_note_data(stored_data, new_data, cfg)
         cfg = cfg or {}
 
@@ -276,7 +277,7 @@ local function make_exporter()
         for _, note_id in pairs(note_ids) do
             self.ankiconnect.append_media(
                     note_id,
-                    make_new_note_data(self.ankiconnect.get_note_fields(note_id), h.deep_copy(new_data), { overwrite = overwrite }),
+                    pub.make_new_note_data(self.ankiconnect.get_note_fields(note_id), h.deep_copy(new_data), { overwrite = overwrite }),
                     substitute_fmt(self.config.note_tag),
                     change_notes_countdown.decrease
             )
@@ -501,6 +502,113 @@ local function test_make_new_note_data(test_exporter)
     h.assert_equals(test_exporter.make_new_note_data(old_note, new_note, { overwrite = false, disable_forvo = true }).SentKanji, expected.SentKanji)
 end
 
+local function valid_update_subtitle()
+    return {
+        text = "new sentence",
+        secondary = "",
+        is_valid = function()
+            return true
+        end,
+    }
+end
+
+local function make_pending_media_job(filename, jobs)
+    local job = { filename = filename, run_async = h.noop }
+    function job.on_finish(callback)
+        job.callback = callback
+        return job
+    end
+    table.insert(jobs, job)
+    return job
+end
+
+local function make_media_job_factory(filename, jobs)
+    return function()
+        return make_pending_media_job(filename, jobs)
+    end
+end
+
+local function make_update_test_encoder(jobs)
+    return {
+        set_output_dir = h.noop,
+        snapshot = { create_job = make_media_job_factory("snapshot.avif", jobs) },
+        audio = { create_job = make_media_job_factory("audio.ogg", jobs) },
+    }
+end
+
+local UPDATE_TEST_CONFIG = {
+    sentence_field = "SentKanji",
+    audio_field = "SentAudio",
+    audio_template = "[sound:%s]",
+    image_field = "Image",
+    image_template = '<img alt="snapshot" src="%s">',
+    audio_padding = 0,
+    miscinfo_enable = false,
+}
+
+local function make_update_test_exporter(result, jobs)
+    local function append_media(note_id, fields)
+        result.append_count = result.append_count + 1
+        result.note_id = note_id
+        result.fields = fields
+    end
+    local ankiconnect = {
+        get_media_dir_path = function()
+            return "/tmp"
+        end,
+        get_note_fields = function()
+            return { SentKanji = "old sentence" }
+        end,
+        append_media = append_media,
+    }
+    local quick_options = {
+        get_lines = h.noop,
+        clear_options = h.noop
+    }
+    local observer = {
+        collect_from_current = valid_update_subtitle,
+        clipboard_prepare = function(text)
+            return text
+        end,
+        clear = h.noop,
+    }
+    local forvo = {
+        set_output_dir = h.noop,
+        append = function(new_data)
+            return new_data
+        end
+    }
+    local config_manager = {
+        fail_if_not_ready = h.noop,
+        config = function()
+            return UPDATE_TEST_CONFIG
+        end
+    }
+    return make_exporter().init(
+            ankiconnect,
+            quick_options,
+            observer,
+            make_update_test_encoder(jobs),
+            forvo,
+            config_manager
+    )
+end
+
+local function test_update_notes_after_media_created()
+    local result = { append_count = 0 }
+    local jobs = {}
+    make_update_test_exporter(result, jobs).update_notes({ 1 }, true)
+    h.assert_equals(#jobs, 2)
+    jobs[1].callback()
+    h.assert_equals(result.append_count, 0)
+    jobs[2].callback()
+    h.assert_equals(result.append_count, 1)
+    h.assert_equals(result.note_id, 1)
+    h.assert_equals(result.fields.SentKanji, "new sentence")
+    h.assert_equals(result.fields.SentAudio, "[sound:audio.ogg]")
+    h.assert_equals(result.fields.Image, '<img alt="snapshot" src="snapshot.avif">')
+end
+
 local function make_test_exporter()
     local test_cfg_mgr = {
         fail_if_not_ready = h.noop,
@@ -537,6 +645,7 @@ local function run_tests(test_exporter)
     test_html_escaping(test_exporter)
     test_join_fields_duplicates(test_exporter)
     test_make_new_note_data(test_exporter)
+    test_update_notes_after_media_created()
 end
 
 return {
