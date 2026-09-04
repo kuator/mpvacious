@@ -29,6 +29,15 @@ function Subtitle:from_text(text, start_time, end_time)
     return self:new { ['text'] = text, ['start'] = start_time, ['end'] = end_time }
 end
 
+--- Return the selected subtitle track's delay relative to the audio track.
+--- mp_api defaults to mp; tests may provide an mp-compatible stub.
+local function subtitle_delay(is_secondary, mp_api)
+    mp_api = mp_api or mp
+    local delay_property = is_secondary and 'secondary-sub-delay' or 'sub-delay'
+    return mp_api.get_property_native(delay_property) - mp_api.get_property_native('audio-delay')
+end
+
+--- Return the currently displayed primary or secondary subtitle with mpv delays applied.
 function Subtitle:now(secondary)
     local prefix = secondary and "secondary-" or ""
     local this = self:new {
@@ -38,7 +47,7 @@ function Subtitle:now(secondary)
         ['is_secondary'] = (secondary and true or false),
     }
     if this:is_valid() then
-        return this:delay(mp.get_property_native("sub-delay") - mp.get_property_native("audio-delay"))
+        return this:delay(subtitle_delay(secondary))
     else
         return nil
     end
@@ -143,12 +152,34 @@ local function test_expand_end_time()
     h.assert_equals(expanded['end'], 3)
 end
 
+local function make_mp_stub_for_tests()
+    local delays = { ['sub-delay'] = 10, ['secondary-sub-delay'] = 3, ['audio-delay'] = 1 }
+    local function get_property_native(name)
+        return delays[name]
+    end
+    return { get_property_native = get_property_native }
+end
+
+local function test_subtitle_delay()
+    local mp_stub = make_mp_stub_for_tests()
+    local cases = {
+        { is_secondary = false, expected_start = 10, expected_end = 11 },
+        { is_secondary = true, expected_start = 3, expected_end = 4 },
+    }
+    for _, case in ipairs(cases) do
+        local shifted = sub("Line", 1, 2):delay(subtitle_delay(case.is_secondary, mp_stub))
+        h.assert_equals(shifted['start'], case.expected_start)
+        h.assert_equals(shifted['end'], case.expected_end)
+    end
+end
+
 function Subtitle.run_tests()
     test_is_same_event()
     test_eq_uses_same_event()
     test_time_overlap()
     test_can_expand_with()
     test_expand_end_time()
+    test_subtitle_delay()
 end
 
 return Subtitle
