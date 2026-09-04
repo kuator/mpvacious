@@ -18,7 +18,7 @@ local CharWidth = {
 }
 
 function this.noop()
-    return
+    return nil
 end
 
 function this.remove_all_spaces(str)
