@@ -71,9 +71,19 @@ function Subtitle:is_same_event(other)
     return self['text'] == other['text'] and is_near(self['start'], other['start']) and is_near(self['end'], other['end'])
 end
 
+--- Return this subtitle's duration in seconds.
+function Subtitle:duration()
+    return self['end'] - self['start']
+end
+
+--- Return the non-negative overlap duration with another subtitle, in seconds.
+function Subtitle:overlap_duration(other)
+    return math.max(0, math.min(self['end'], other['end']) - math.max(self['start'], other['start']))
+end
+
 --- Return true if this sub and other intersect in time. Touching boundaries do not count.
 function Subtitle:overlaps_in_time(other)
-    return self['start'] < other['end'] and self['end'] > other['start']
+    return self:overlap_duration(other) > 0
 end
 
 --- Return true if this sub and other intersect or merely touch in time.
@@ -138,6 +148,21 @@ local function test_time_overlap()
     end
 end
 
+local function test_duration_and_overlap_duration()
+    local first = sub("A", 0, 2)
+    local cases = {
+        { other = sub("B", 1, 3), expected = 1 },
+        { other = sub("B", 2, 3), expected = 0 },
+        { other = sub("B", 3, 4), expected = 0 },
+        { other = sub("B", 0.5, 1.5), expected = 1 },
+    }
+    h.assert_equals(first:duration(), 2)
+    for _, case in ipairs(cases) do
+        h.assert_equals(first:overlap_duration(case.other), case.expected)
+        h.assert_equals(case.other:overlap_duration(first), case.expected)
+    end
+end
+
 local function test_can_expand_with()
     h.assert_equals(sub("A", 0, 1):can_expand_with(sub("A", 1, 2)), true)
     h.assert_equals(sub("A", 0, 2):can_expand_with(sub("A", 1, 3)), true)
@@ -177,6 +202,7 @@ function Subtitle.run_tests()
     test_is_same_event()
     test_eq_uses_same_event()
     test_time_overlap()
+    test_duration_and_overlap_duration()
     test_can_expand_with()
     test_expand_end_time()
     test_subtitle_delay()

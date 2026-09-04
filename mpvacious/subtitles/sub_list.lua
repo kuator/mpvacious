@@ -10,9 +10,22 @@ local Subtitle = require('subtitles.subtitle')
 local speech_collector = require('subtitles.collector')
 local LOOKUP_WINDOW_SIZE = 25 -- how many recent subs to scan for duplicate events
 local MAX_SUB_GAP_SECONDS = 20 -- stop joining lines separated by a longer gap
+local SHORT_SUB_SECONDS = 1
+local MIN_SUB_OVERLAP_RATIO = 0.5
+local MIN_SHORT_SUB_OVERLAP_RATIO = 0.75
 
 local function flatten_subtitle_text(text)
     return h.remove_leading_trailing_spaces(h.collapse_whitespace(text))
+end
+
+local function required_overlap_ratio(shorter_duration)
+    return shorter_duration < SHORT_SUB_SECONDS and MIN_SHORT_SUB_OVERLAP_RATIO or MIN_SUB_OVERLAP_RATIO
+end
+
+local function overlaps_enough(sub, window)
+    local shorter_duration = math.min(sub:duration(), window:duration())
+    return shorter_duration > 0
+            and sub:overlap_duration(window) >= shorter_duration * required_overlap_ratio(shorter_duration)
 end
 
 local new_sub_list = function()
@@ -57,14 +70,15 @@ local new_sub_list = function()
     --- Used to align secondary (translation) text with the primary text's time span:
     --- primary and secondary cues have independent timings, so collecting secondary
     --- text by line count or by the currently visible cue would misalign it with the
-    --- primary text. Cues merely touching a window edge are excluded.
+    --- primary text. Small boundary intersections are treated as timing noise.
     --- Boundary overlap between consecutive cues is removed by the speech collector,
     --- and the result is flattened to a single whitespace-collapsed, trimmed line.
-    --- `window` is a Subtitle, e.g. the combined primary Subtitle from collect_n_subs.
+    --- `window` is the selected primary Subtitle. Normal cues must overlap at least
+    --- half of the shorter cue; cues shorter than one second must overlap by 75%.
     local get_overlapping_text = function(window)
         local collector = speech_collector.make_speech_collector()
         for _, sub in ipairs(subs_list) do
-            if sub:overlaps_in_time(window) then
+            if overlaps_enough(sub, window) then
                 collector.append_sub(sub)
             end
         end
@@ -341,7 +355,23 @@ local function test_collect_n_subs()
     h.assert_equals(combined['end'], 3)
 end
 
-local function test_get_overlapping_text_uses_timing_and_removes_line_overlap()
+local function test_overlap_thresholds()
+    local cases = {
+        { sub = Subtitle:from_text('', 1, 3), window = Subtitle:from_text('', 0, 2), expected = true }, -- 50%
+        { sub = Subtitle:from_text('', 1.01, 3.01), window = Subtitle:from_text('', 0, 2), expected = false },
+        { sub = Subtitle:from_text('', 0.125, 0.625), window = Subtitle:from_text('', 0, 0.5), expected = true }, -- 75%
+        { sub = Subtitle:from_text('', 0.126, 0.626), window = Subtitle:from_text('', 0, 0.5), expected = false },
+        { sub = Subtitle:from_text('', 0.5, 1.5), window = Subtitle:from_text('', 0, 1), expected = true }, -- 1s uses 50%
+        { sub = Subtitle:from_text('', 1, 2), window = Subtitle:from_text('', 0, 1), expected = false },
+        { sub = Subtitle:from_text('', 0, 0), window = Subtitle:from_text('', 0, 1), expected = false },
+        { sub = Subtitle:from_text('', 0.25, 0.75), window = Subtitle:from_text('', 0, 1), expected = true },
+    }
+    for _, case in ipairs(cases) do
+        h.assert_equals(overlaps_enough(case.sub, case.window), case.expected)
+    end
+end
+
+local function test_get_overlapping_text_formats_matches()
     local subs = new_sub_list()
     subs.insert(Subtitle:from_text("Before", 0, 1))
     subs.insert(Subtitle:from_text("First line", 1, 2))
@@ -352,6 +382,16 @@ local function test_get_overlapping_text_uses_timing_and_removes_line_overlap()
     local spaced_subs = new_sub_list()
     spaced_subs.insert(Subtitle:from_text("  First\t line\nSecond  line  ", 1, 2))
     h.assert_equals(spaced_subs.get_overlapping_text(Subtitle:from_text('', 1, 2)), "First line Second line")
+end
+
+local function test_get_overlapping_text_filters_timing_noise()
+    local timing_noise = new_sub_list()
+    timing_noise.insert(Subtitle:from_text("Relevant", 759.82, 763.09))
+    timing_noise.insert(Subtitle:from_text("Unrelated", 763.09, 766.03))
+    h.assert_equals(
+            timing_noise.get_overlapping_text(Subtitle:from_text('', 761.594, 763.179)),
+            "Relevant"
+    )
 end
 
 local function run_tests()
@@ -368,7 +408,9 @@ local function run_tests()
     test_get_subs_list_returns_array_copy()
     test_get_text()
     test_collect_n_subs()
-    test_get_overlapping_text_uses_timing_and_removes_line_overlap()
+    test_overlap_thresholds()
+    test_get_overlapping_text_formats_matches()
+    test_get_overlapping_text_filters_timing_noise()
 end
 
 return {
